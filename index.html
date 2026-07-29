@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>CyberBreaker</title>
+    <style>
+        /* Arne16 colorscheme */
+        :root {
+            --c-black:       #000000;
+            --c-gray:        #9D9D9D;
+            --c-white:       #FFFFFF;
+            --c-dark-red:    #BE2633;
+            --c-pink:        #E06F8B;
+            --c-brown:       #493C2B;
+            --c-dark-orange: #A46422;
+            --c-orange:      #EB8931;
+            --c-yellow:      #F7E26B;
+            --c-dark-cyan:   #2F484E;
+            --c-dark-green:  #44891A;
+            --c-light-green: #A3CE27;
+            --c-dark-blue:   #1B2632;
+            --c-blue:        #005784;
+            --c-light-blue:  #31A2F2;
+            --c-light-cyan:  #B2DCE6;
+        }
+
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--c-black);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+            background: var(--c-black);
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script src="game.js"></script>
+</body>
+</html>
