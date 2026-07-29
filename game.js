@@ -189,7 +189,12 @@
         ball.vx = 0;
         ball.vy = 0;
         ball.launched = false;
-        ball.speed = Math.min(BALL_SPEED_INIT + (wave - 1) * 0.3, BALL_MAX_SPEED);
+        // 10% permanent speed increase per wave
+        ball.baseSpeed = Math.min(
+            BALL_SPEED_INIT * (1 + (wave - 1) * 0.1),
+            BALL_MAX_SPEED
+        );
+        ball.speed = ball.baseSpeed;
     }
 
     function startGame() {
@@ -325,6 +330,20 @@
             ball.x = paddle.x + PADDLE_W / 2;
             ball.y = PADDLE_Y - BALL_R - 1;
         } else {
+            // Dynamic speed: increases as blocks are destroyed, resets each wave
+            const totalBricks = bricks.length;
+            const aliveBricks = bricks.filter(function (b) { return b.alive; }).length;
+            const destroyedRatio = 1 - (aliveBricks / totalBricks);
+            const speedBoost = 1 + destroyedRatio * 0.3; // up to 30% extra from brick destruction
+            const newSpeed = Math.min(ball.baseSpeed * speedBoost, BALL_MAX_SPEED);
+
+            // Normalize velocity and apply new speed
+            const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+            if (currentSpeed > 0) {
+                ball.vx = (ball.vx / currentSpeed) * newSpeed;
+                ball.vy = (ball.vy / currentSpeed) * newSpeed;
+            }
+
             // Ball movement
             ball.x += ball.vx;
             ball.y += ball.vy;
@@ -373,8 +392,8 @@
                 const hit = (ball.x - paddle.x) / PADDLE_W; // 0..1
                 const angle = hit * (-Math.PI) + Math.PI; // 0..PI mapped
                 const launchAngle = -Math.PI / 2 + (hit - 0.5) * Math.PI * 0.75;
-                ball.vx = Math.cos(launchAngle) * ball.speed;
-                ball.vy = Math.sin(launchAngle) * ball.speed;
+                ball.vx = Math.cos(launchAngle) * newSpeed;
+                ball.vy = Math.sin(launchAngle) * newSpeed;
                 spawnParticles(ball.x, ball.y, C.LIGHT_CYAN, 6);
             }
 
