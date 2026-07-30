@@ -84,6 +84,9 @@
     const SCORE_PER_BRICK = 10;
     const SCORE_PER_WAVE = 100;
 
+    const POWERUP_CHANCE = 0.05;  // 5% chance per block break
+    const POWERUP_DURATION = 30;  // seconds
+
     // ============================================================
     // GAME STATE
     // ============================================================
@@ -112,6 +115,14 @@
 
     // Title screen glitch timer
     let glitchTimer = 0;
+
+    // ============================================================
+    // POWERUP STATE
+    // ============================================================
+    let powerupActive = false;
+    let powerupTimer = 0;          // remaining time in seconds
+    let powerupMessage = '';       // UI message to display
+    let powerupMessageTimer = 0;   // how long to show the message (frames)
 
     // ============================================================
     // BRICK GENERATION
@@ -214,6 +225,17 @@
         const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.8;
         ball.vx = Math.cos(angle) * ball.speed;
         ball.vy = Math.sin(angle) * ball.speed;
+    }
+
+    // ============================================================
+    // POWERUP
+    // ============================================================
+    function activatePowerup() {
+        powerupActive = true;
+        powerupTimer = POWERUP_DURATION;
+        powerupMessage = '⚡ POWERUP FOUND! ⚡';
+        powerupMessageTimer = 180; // show for ~3 seconds at 60fps
+        spawnParticles(ball.x, ball.y, '#39FF14', 25);
     }
 
     // ============================================================
@@ -362,20 +384,27 @@
                 ball.vy = Math.abs(ball.vy);
             }
 
-            // Bottom — lose a life
+            // Bottom — lose a life (unless powerup is active)
             if (ball.y + BALL_R >= GAME_H) {
-                lives--;
-                spawnParticles(ball.x, ball.y, C.DARK_RED, 20);
-                if (lives <= 0) {
-                    // Game over
-                    if (score > highScore) {
-                        highScore = score;
-                        localStorage.setItem('cyberBreakerHighScore', highScore);
-                    }
-                    gameState = STATE.GAME_OVER;
+                if (powerupActive) {
+                    // Powerup saves the life — show a message
+                    powerupMessage = 'POWERUP SAVED YOUR LIFE!';
+                    powerupMessageTimer = 120; // show for ~2 seconds at 60fps
+                    spawnParticles(ball.x, ball.y, '#39FF14', 20);
                 } else {
-                    resetBall();
+                    lives--;
+                    spawnParticles(ball.x, ball.y, C.DARK_RED, 20);
+                    if (lives <= 0) {
+                        // Game over
+                        if (score > highScore) {
+                            highScore = score;
+                            localStorage.setItem('cyberBreakerHighScore', highScore);
+                        }
+                        gameState = STATE.GAME_OVER;
+                        return;
+                    }
                 }
+                resetBall();
                 return;
             }
 
@@ -426,8 +455,14 @@
                     b.hp--;
                     if (b.hp <= 0) {
                         b.alive = false;
-                        score += SCORE_PER_BRICK;
+                        const points = powerupActive ? SCORE_PER_BRICK * 2 : SCORE_PER_BRICK;
+                        score += points;
                         spawnParticles(b.x + b.w / 2, b.y + b.h / 2, b.color, 12);
+
+                        // 5% powerup chance on block break (only if not already active)
+                        if (!powerupActive && Math.random() < POWERUP_CHANCE) {
+                            activatePowerup();
+                        }
                     } else {
                         spawnParticles(b.x + b.w / 2, b.y + b.h / 2, C.WHITE, 4);
                     }
@@ -442,11 +477,40 @@
             wave++;
             bricks = generateBricks(wave);
             resetBall();
+            powerupActive = false;
+            powerupTimer = 0;
             spawnParticles(GAME_W / 2, GAME_H / 2, C.YELLOW, 40);
+        }
+
+        // --- Powerup timer ---
+        if (powerupActive) {
+            powerupTimer -= 1 / 60; // decrement by ~1 frame at 60fps
+            if (powerupTimer <= 0) {
+                powerupActive = false;
+                powerupTimer = 0;
+            }
+        }
+
+        // --- Powerup message timer ---
+        if (powerupMessageTimer > 0) {
+            powerupMessageTimer--;
+            if (powerupMessageTimer <= 0) {
+                powerupMessage = '';
+            }
         }
 
         // --- Update particles ---
         updateParticles();
+
+        // --- Apply powerup speed boost ---
+        if (powerupActive && ball.launched) {
+            const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+            if (currentSpeed > 0) {
+                const targetSpeed = ball.speed * 2;
+                ball.vx = (ball.vx / currentSpeed) * targetSpeed;
+                ball.vy = (ball.vy / currentSpeed) * targetSpeed;
+            }
+        }
     }
 
     // ============================================================
@@ -528,6 +592,32 @@
         ctx.fillStyle = C.GRAY;
         ctx.font = '12px monospace';
         ctx.fillText('HI: ' + highScore, GAME_W - 16, 50);
+
+        // Powerup active indicator
+        if (powerupActive) {
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 14px monospace';
+            const pulse = 0.7 + Math.sin(Date.now() * 0.01) * 0.3;
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = '#39FF14';
+            const remaining = Math.ceil(powerupTimer);
+            ctx.fillText('[ POWERUP ACTIVE: ' + remaining + 's ]', GAME_W / 2, 52);
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Powerup found message
+        if (powerupMessage) {
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 16px monospace';
+            const msgAlpha = Math.min(1, powerupMessageTimer / 30);
+            ctx.globalAlpha = msgAlpha;
+            ctx.fillStyle = '#39FF14';
+            ctx.shadowColor = '#39FF14';
+            ctx.shadowBlur = 10;
+            ctx.fillText(powerupMessage, GAME_W / 2, GAME_H / 2 - 40);
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1.0;
+        }
     }
 
     function drawPaddle() {
@@ -559,14 +649,19 @@
     }
 
     function drawBall() {
-        // Glow
-        drawGlowCircle(ball.x, ball.y, BALL_R + 3, 'transparent', C.YELLOW, 15);
+        const isPowerup = powerupActive;
+        const ballColor = isPowerup ? '#39FF14' : C.WHITE;
+        const glowColor = isPowerup ? '#39FF14' : C.LIGHT_CYAN;
+        const outerGlow = isPowerup ? '#39FF14' : C.YELLOW;
+
+        // Outer glow
+        drawGlowCircle(ball.x, ball.y, BALL_R + 3, 'transparent', outerGlow, isPowerup ? 20 : 15);
 
         // Ball
-        drawGlowCircle(ball.x, ball.y, BALL_R, C.WHITE, C.LIGHT_CYAN, 8);
+        drawGlowCircle(ball.x, ball.y, BALL_R, ballColor, glowColor, isPowerup ? 15 : 8);
 
         // Inner highlight
-        ctx.fillStyle = C.LIGHT_CYAN;
+        ctx.fillStyle = isPowerup ? '#B2FF59' : C.LIGHT_CYAN;
         ctx.globalAlpha = 0.6;
         ctx.beginPath();
         ctx.arc(ball.x - 2, ball.y - 2, BALL_R * 0.4, 0, Math.PI * 2);
