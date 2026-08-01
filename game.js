@@ -37,27 +37,37 @@
     ];
 
     // ============================================================
-    // CANVAS SETUP — square canvas, scales to viewport
+    // CANVAS SETUP — HD rendering with device pixel ratio
     // ============================================================
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
     const GAME_W = 640;
     const GAME_H = 640;
-    let scale = 1;
+    let displayScale = 1;    // CSS pixels / game units
+    let dpr = 1;             // device pixel ratio
 
     function resizeCanvas() {
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         const size = Math.min(vw, vh);
+        dpr = window.devicePixelRatio || 1;
+        displayScale = size / GAME_W;
+
+        // Set canvas internal resolution to HD (display size × DPR)
+        const hdWidth = Math.round(size * dpr);
+        const hdHeight = Math.round(size * dpr);
+        canvas.width = hdWidth;
+        canvas.height = hdHeight;
+
+        // Set CSS display size
         canvas.style.width = size + 'px';
         canvas.style.height = size + 'px';
-        scale = size / GAME_W;
+
+        // Scale context so all drawing uses GAME_W × GAME_H coordinates
+        ctx.setTransform(dpr * displayScale, 0, 0, dpr * displayScale, 0, 0);
     }
 
-    // Set logical resolution
-    canvas.width = GAME_W;
-    canvas.height = GAME_H;
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
@@ -276,7 +286,7 @@
     // Mouse
     canvas.addEventListener('mousedown', (e) => {
         const rect = canvas.getBoundingClientRect();
-        mouseX = (e.clientX - rect.left) / scale;
+        mouseX = (e.clientX - rect.left) / displayScale;
         mouseActive = true;
 
         if (gameState === STATE.TITLE) {
@@ -290,7 +300,7 @@
 
     canvas.addEventListener('mousemove', (e) => {
         const rect = canvas.getBoundingClientRect();
-        mouseX = (e.clientX - rect.left) / scale;
+        mouseX = (e.clientX - rect.left) / displayScale;
     });
 
     canvas.addEventListener('mouseup', () => {
@@ -302,7 +312,7 @@
         e.preventDefault();
         const rect = canvas.getBoundingClientRect();
         const touch = e.touches[0];
-        touchX = (touch.clientX - rect.left) / scale;
+        touchX = (touch.clientX - rect.left) / displayScale;
         touchActive = true;
 
         if (gameState === STATE.TITLE) {
@@ -318,7 +328,7 @@
         e.preventDefault();
         const rect = canvas.getBoundingClientRect();
         const touch = e.touches[0];
-        touchX = (touch.clientX - rect.left) / scale;
+        touchX = (touch.clientX - rect.left) / displayScale;
     }, { passive: false });
 
     canvas.addEventListener('touchend', (e) => {
@@ -514,11 +524,11 @@
     }
 
     // ============================================================
-    // RENDER HELPERS
+    // RENDER HELPERS — HD quality
     // ============================================================
     function drawScanlines() {
         scanlineOffset = (scanlineOffset + 0.5) % 4;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
         for (let y = scanlineOffset; y < GAME_H; y += 4) {
             ctx.fillRect(0, y, GAME_W, 1);
         }
@@ -526,17 +536,17 @@
 
     function drawGrid() {
         ctx.strokeStyle = C.DARK_BLUE;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 0.5;
         const gridSize = 40;
         for (let x = 0; x <= GAME_W; x += gridSize) {
-            ctx.globalAlpha = 0.15;
+            ctx.globalAlpha = 0.12;
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, GAME_H);
             ctx.stroke();
         }
         for (let y = 0; y <= GAME_H; y += gridSize) {
-            ctx.globalAlpha = 0.15;
+            ctx.globalAlpha = 0.12;
             ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(GAME_W, y);
@@ -545,8 +555,23 @@
         ctx.globalAlpha = 1.0;
     }
 
+    // Draw rounded rectangle path
+    function roundRectPath(x, y, w, h, r) {
+        r = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+    }
+
     function drawGlowRect(x, y, w, h, color, glowColor, glowBlur) {
-        // Glow
         ctx.shadowColor = glowColor;
         ctx.shadowBlur = glowBlur;
         ctx.fillStyle = color;
@@ -564,34 +589,55 @@
         ctx.shadowBlur = 0;
     }
 
+    // Smooth gradient fill for circles
+    function drawGradientCircle(x, y, r, colorTop, colorBottom) {
+        const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+        grad.addColorStop(0, colorTop);
+        grad.addColorStop(1, colorBottom);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
     // ============================================================
-    // DRAW FUNCTIONS
+    // DRAW FUNCTIONS — HD quality
     // ============================================================
     function drawHUD() {
-        ctx.font = 'bold 18px monospace';
+        ctx.textBaseline = 'top';
+        ctx.font = 'bold 20px monospace';
         ctx.textAlign = 'left';
 
         // Score
+        ctx.shadowColor = C.YELLOW;
+        ctx.shadowBlur = 8;
         ctx.fillStyle = C.YELLOW;
-        ctx.fillText('SCORE: ' + score, 16, 30);
+        ctx.fillText('SCORE: ' + score, 16, 14);
+        ctx.shadowBlur = 0;
 
         // Wave
-        ctx.fillStyle = C.LIGHT_BLUE;
         ctx.textAlign = 'center';
-        ctx.fillText('WAVE ' + wave, GAME_W / 2, 30);
+        ctx.shadowColor = C.LIGHT_BLUE;
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = C.LIGHT_BLUE;
+        ctx.fillText('WAVE ' + wave, GAME_W / 2, 14);
+        ctx.shadowBlur = 0;
 
         // Lives
         ctx.textAlign = 'right';
+        ctx.shadowColor = C.DARK_RED;
+        ctx.shadowBlur = 6;
         ctx.fillStyle = C.DARK_RED;
         let livesStr = '';
         for (let i = 0; i < lives; i++) livesStr += '♦ ';
-        ctx.fillText(livesStr, GAME_W - 16, 30);
+        ctx.fillText(livesStr, GAME_W - 16, 14);
+        ctx.shadowBlur = 0;
 
         // High score
         ctx.textAlign = 'right';
         ctx.fillStyle = C.GRAY;
-        ctx.font = '12px monospace';
-        ctx.fillText('HI: ' + highScore, GAME_W - 16, 50);
+        ctx.font = '14px monospace';
+        ctx.fillText('HI: ' + highScore, GAME_W - 16, 38);
 
         // Powerup active indicator
         if (powerupActive) {
@@ -600,135 +646,197 @@
             const pulse = 0.7 + Math.sin(Date.now() * 0.01) * 0.3;
             ctx.globalAlpha = pulse;
             ctx.fillStyle = '#39FF14';
+            ctx.shadowColor = '#39FF14';
+            ctx.shadowBlur = 10;
             const remaining = Math.ceil(powerupTimer);
-            ctx.fillText('[ POWERUP ACTIVE: ' + remaining + 's ]', GAME_W / 2, 52);
+            ctx.fillText('[ POWERUP ACTIVE: ' + remaining + 's ]', GAME_W / 2, 36);
+            ctx.shadowBlur = 0;
             ctx.globalAlpha = 1.0;
         }
 
         // Powerup found message
         if (powerupMessage) {
             ctx.textAlign = 'center';
-            ctx.font = 'bold 16px monospace';
+            ctx.textBaseline = 'middle';
+            ctx.font = 'bold 18px monospace';
             const msgAlpha = Math.min(1, powerupMessageTimer / 30);
             ctx.globalAlpha = msgAlpha;
             ctx.fillStyle = '#39FF14';
             ctx.shadowColor = '#39FF14';
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = 14;
             ctx.fillText(powerupMessage, GAME_W / 2, GAME_H / 2 - 40);
             ctx.shadowBlur = 0;
             ctx.globalAlpha = 1.0;
+            ctx.textBaseline = 'top';
         }
     }
 
     function drawPaddle() {
         const px = paddle.x;
         const py = PADDLE_Y;
+        const cornerR = PADDLE_H / 2;
 
-        // Glow
-        drawGlowRect(px - 2, py - 2, PADDLE_W + 4, PADDLE_H + 4,
-            'transparent', C.LIGHT_CYAN, 12);
+        // Outer glow layer
+        ctx.shadowColor = C.LIGHT_CYAN;
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = 'rgba(178, 220, 230, 0.15)';
+        roundRectPath(px - 2, py - 2, PADDLE_W + 4, PADDLE_H + 4, cornerR);
+        ctx.fill();
+        ctx.shadowBlur = 0;
 
-        // Main paddle body
+        // Main paddle body with gradient
         const grad = ctx.createLinearGradient(px, py, px, py + PADDLE_H);
         grad.addColorStop(0, C.LIGHT_CYAN);
-        grad.addColorStop(0.5, C.LIGHT_BLUE);
+        grad.addColorStop(0.4, C.LIGHT_BLUE);
         grad.addColorStop(1, C.BLUE);
         ctx.fillStyle = grad;
-        ctx.fillRect(px, py, PADDLE_W, PADDLE_H);
+        roundRectPath(px, py, PADDLE_W, PADDLE_H, cornerR);
+        ctx.fill();
 
-        // Top highlight
+        // Inner top highlight
+        const hlGrad = ctx.createLinearGradient(px, py, px, py + PADDLE_H * 0.6);
+        hlGrad.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
+        hlGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = hlGrad;
+        roundRectPath(px + 4, py + 1, PADDLE_W - 8, PADDLE_H * 0.5, cornerR - 1);
+        ctx.fill();
+
+        // Neon edge outline
+        ctx.strokeStyle = C.LIGHT_CYAN;
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = C.LIGHT_CYAN;
+        ctx.shadowBlur = 8;
+        roundRectPath(px, py, PADDLE_W, PADDLE_H, cornerR);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Side accent lights
         ctx.fillStyle = C.WHITE;
-        ctx.globalAlpha = 0.5;
-        ctx.fillRect(px + 4, py, PADDLE_W - 8, 2);
+        ctx.globalAlpha = 0.8;
+        roundRectPath(px + 2, py + 3, 4, PADDLE_H - 6, 2);
+        ctx.fill();
+        roundRectPath(px + PADDLE_W - 6, py + 3, 4, PADDLE_H - 6, 2);
+        ctx.fill();
         ctx.globalAlpha = 1.0;
-
-        // Side accents
-        ctx.fillStyle = C.LIGHT_CYAN;
-        ctx.fillRect(px, py, 3, PADDLE_H);
-        ctx.fillRect(px + PADDLE_W - 3, py, 3, PADDLE_H);
     }
 
     function drawBall() {
         const isPowerup = powerupActive;
-        const ballColor = isPowerup ? '#39FF14' : C.WHITE;
+        const primaryColor = isPowerup ? '#39FF14' : C.WHITE;
         const glowColor = isPowerup ? '#39FF14' : C.LIGHT_CYAN;
-        const outerGlow = isPowerup ? '#39FF14' : C.YELLOW;
+        const highlightColor = isPowerup ? '#B2FF59' : C.LIGHT_CYAN;
 
-        // Outer glow
-        drawGlowCircle(ball.x, ball.y, BALL_R + 3, 'transparent', outerGlow, isPowerup ? 20 : 15);
-
-        // Ball
-        drawGlowCircle(ball.x, ball.y, BALL_R, ballColor, glowColor, isPowerup ? 15 : 8);
-
-        // Inner highlight
-        ctx.fillStyle = isPowerup ? '#B2FF59' : C.LIGHT_CYAN;
-        ctx.globalAlpha = 0.6;
+        // Multi-layer outer glow
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = isPowerup ? 30 : 20;
+        ctx.fillStyle = isPowerup ? 'rgba(57, 255, 20, 0.2)' : 'rgba(178, 220, 230, 0.15)';
         ctx.beginPath();
-        ctx.arc(ball.x - 2, ball.y - 2, BALL_R * 0.4, 0, Math.PI * 2);
+        ctx.arc(ball.x, ball.y, BALL_R + 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Core glow
+        ctx.shadowBlur = isPowerup ? 20 : 12;
+        drawGradientCircle(ball.x, ball.y, BALL_R, primaryColor, isPowerup ? '#1a8a0a' : C.LIGHT_BLUE);
+        ctx.shadowBlur = 0;
+
+        // Specular highlight (smooth reflection)
+        const hlGrad = ctx.createRadialGradient(
+            ball.x - BALL_R * 0.3, ball.y - BALL_R * 0.3, 0,
+            ball.x - BALL_R * 0.3, ball.y - BALL_R * 0.3, BALL_R * 0.55
+        );
+        hlGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+        hlGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = hlGrad;
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Small bright dot at the highlight center
+        ctx.fillStyle = C.WHITE;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.arc(ball.x - BALL_R * 0.25, ball.y - BALL_R * 0.25, BALL_R * 0.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1.0;
     }
 
     function drawBricks() {
+        const brickCornerR = 3;
         for (const b of bricks) {
             if (!b.alive) continue;
 
             const hpRatio = b.hp / b.maxHp;
 
-            // Glow
+            // Soft outer glow
             ctx.shadowColor = b.color;
-            ctx.shadowBlur = 6;
-
-            // Brick body
+            ctx.shadowBlur = 8;
             ctx.fillStyle = b.color;
-            ctx.fillRect(b.x, b.y, b.w, b.h);
+            roundRectPath(b.x, b.y, b.w, b.h, brickCornerR);
+            ctx.fill();
+            ctx.shadowBlur = 0;
 
-            // If damaged, dim it
+            // If damaged, overlay darker layer
             if (hpRatio < 1) {
                 ctx.fillStyle = C.BLACK;
-                ctx.globalAlpha = 1 - hpRatio;
-                ctx.fillRect(b.x, b.y, b.w, b.h);
+                ctx.globalAlpha = (1 - hpRatio) * 0.6;
+                roundRectPath(b.x, b.y, b.w, b.h, brickCornerR);
+                ctx.fill();
                 ctx.globalAlpha = 1.0;
             }
 
-            // Top edge highlight
-            ctx.fillStyle = C.WHITE;
-            ctx.globalAlpha = 0.3;
-            ctx.fillRect(b.x, b.y, b.w, 2);
+            // Top gradient highlight (bevel effect)
+            const topHL = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h * 0.5);
+            topHL.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+            topHL.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = topHL;
+            roundRectPath(b.x, b.y, b.w, b.h * 0.5, brickCornerR);
+            ctx.fill();
 
-            // Left edge highlight
-            ctx.globalAlpha = 0.2;
-            ctx.fillRect(b.x, b.y, 2, b.h);
-            ctx.globalAlpha = 1.0;
+            // Left side subtle highlight
+            const leftHL = ctx.createLinearGradient(b.x, b.y, b.x + b.w * 0.3, b.y);
+            leftHL.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+            leftHL.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = leftHL;
+            ctx.fillRect(b.x, b.y, b.w * 0.3, b.h);
+
+            // Neon edge
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 0.5;
+            roundRectPath(b.x, b.y, b.w, b.h, brickCornerR);
+            ctx.stroke();
 
             // Damage crack effect
             if (hpRatio < 1 && hpRatio > 0) {
-                ctx.strokeStyle = C.BLACK;
-                ctx.lineWidth = 1;
-                ctx.globalAlpha = 0.5;
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.lineWidth = 1.2;
+                ctx.lineCap = 'round';
                 ctx.beginPath();
-                ctx.moveTo(b.x + b.w * 0.3, b.y);
-                ctx.lineTo(b.x + b.w * 0.5, b.y + b.h * 0.6);
-                ctx.lineTo(b.x + b.w * 0.7, b.y + b.h);
+                ctx.moveTo(b.x + b.w * 0.35, b.y);
+                ctx.lineTo(b.x + b.w * 0.5, b.y + b.h * 0.5);
+                ctx.lineTo(b.x + b.w * 0.4, b.y + b.h * 0.7);
+                ctx.lineTo(b.x + b.w * 0.65, b.y + b.h);
                 ctx.stroke();
-                ctx.globalAlpha = 1.0;
+                ctx.lineCap = 'butt';
             }
-
-            ctx.shadowBlur = 0;
         }
     }
 
     function drawParticles() {
         for (const p of particles) {
             ctx.globalAlpha = p.life;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 4;
             ctx.fillStyle = p.color;
-            ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
         }
         ctx.globalAlpha = 1.0;
     }
 
     // ============================================================
-    // SCREEN RENDERERS
+    // SCREEN RENDERERS — HD quality
     // ============================================================
     function drawTitleScreen() {
         // Background
@@ -736,24 +844,38 @@
         ctx.fillRect(0, 0, GAME_W, GAME_H);
         drawGrid();
 
+        // Ambient background glow
+        const bgGlow = ctx.createRadialGradient(GAME_W / 2, 230, 30, GAME_W / 2, 230, 250);
+        bgGlow.addColorStop(0, 'rgba(49, 162, 242, 0.08)');
+        bgGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = bgGlow;
+        ctx.fillRect(0, 0, GAME_W, GAME_H);
+
         // Cyberpunk title with glitch effect
         glitchTimer++;
         const glitch = Math.sin(glitchTimer * 0.05) > 0.95;
         const glitchOffsetX = glitch ? (Math.random() - 0.5) * 10 : 0;
         const glitchOffsetY = glitch ? (Math.random() - 0.5) * 4 : 0;
 
-        // Title glow
-        ctx.shadowColor = C.LIGHT_BLUE;
-        ctx.shadowBlur = 30;
-        ctx.font = 'bold 56px monospace';
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Title "CYBER" with layered glow
+        ctx.shadowColor = C.LIGHT_BLUE;
+        ctx.shadowBlur = 40;
+        ctx.font = 'bold 60px monospace';
         ctx.fillStyle = C.LIGHT_CYAN;
         ctx.fillText('CYBER', GAME_W / 2 + glitchOffsetX, 200 + glitchOffsetY);
+        ctx.shadowBlur = 20;
+        ctx.fillText('CYBER', GAME_W / 2 + glitchOffsetX, 200 + glitchOffsetY);
 
+        // Title "BREAKER"
         ctx.shadowColor = C.LIGHT_BLUE;
-        ctx.shadowBlur = 25;
+        ctx.shadowBlur = 35;
         ctx.fillStyle = C.LIGHT_BLUE;
-        ctx.fillText('BREAKER', GAME_W / 2 - glitchOffsetX, 260 + glitchOffsetY);
+        ctx.fillText('BREAKER', GAME_W / 2 - glitchOffsetX, 265 + glitchOffsetY);
+        ctx.shadowBlur = 15;
+        ctx.fillText('BREAKER', GAME_W / 2 - glitchOffsetX, 265 + glitchOffsetY);
         ctx.shadowBlur = 0;
 
         // Decorative line
@@ -767,38 +889,45 @@
         ctx.lineWidth = 2;
         ctx.globalAlpha = 0.7 + Math.sin(glitchTimer * 0.08) * 0.3;
         ctx.beginPath();
-        ctx.moveTo(GAME_W * 0.15, 285);
-        ctx.lineTo(GAME_W * 0.85, 285);
+        ctx.moveTo(GAME_W * 0.15, 295);
+        ctx.lineTo(GAME_W * 0.85, 295);
         ctx.stroke();
         ctx.globalAlpha = 1.0;
 
         // Subtitle
-        ctx.font = '16px monospace';
+        ctx.font = '18px monospace';
         ctx.fillStyle = C.GRAY;
         ctx.globalAlpha = 0.7 + Math.sin(glitchTimer * 0.06) * 0.3;
-        ctx.fillText('[ BREAK THE GRID ]', GAME_W / 2, 330);
+        ctx.fillText('[ BREAK THE GRID ]', GAME_W / 2, 340);
         ctx.globalAlpha = 1.0;
 
         // Instructions
         const pulse = 0.6 + Math.sin(glitchTimer * 0.08) * 0.4;
         ctx.globalAlpha = pulse;
-        ctx.font = 'bold 20px monospace';
+        ctx.font = 'bold 22px monospace';
         ctx.fillStyle = C.YELLOW;
-        ctx.fillText('>> PRESS ANY KEY OR TAP <<', GAME_W / 2, 420);
+        ctx.shadowColor = C.YELLOW;
+        ctx.shadowBlur = 10;
+        ctx.fillText('>> PRESS ANY KEY OR TAP <<', GAME_W / 2, 430);
+        ctx.shadowBlur = 0;
         ctx.globalAlpha = 1.0;
 
-        ctx.font = '14px monospace';
+        ctx.font = '15px monospace';
         ctx.fillStyle = C.GRAY;
-        ctx.fillText('← → or DRAG to move paddle', GAME_W / 2, 480);
-        ctx.fillText('ENTER or TAP to launch ball', GAME_W / 2, 505);
+        ctx.fillText('← → or DRAG to move paddle', GAME_W / 2, 490);
+        ctx.fillText('ENTER or TAP to launch ball', GAME_W / 2, 515);
 
         // High score
         if (highScore > 0) {
             ctx.fillStyle = C.ORANGE;
-            ctx.font = '16px monospace';
-            ctx.fillText('HIGH SCORE: ' + highScore, GAME_W / 2, 560);
+            ctx.shadowColor = C.ORANGE;
+            ctx.shadowBlur = 6;
+            ctx.font = '18px monospace';
+            ctx.fillText('HIGH SCORE: ' + highScore, GAME_W / 2, 575);
+            ctx.shadowBlur = 0;
         }
 
+        ctx.textBaseline = 'top';
         drawScanlines();
     }
 
@@ -808,16 +937,27 @@
         ctx.fillRect(0, 0, GAME_W, GAME_H);
         drawGrid();
 
+        // Ambient red glow
+        const bgGlow = ctx.createRadialGradient(GAME_W / 2, 170, 20, GAME_W / 2, 170, 200);
+        bgGlow.addColorStop(0, 'rgba(190, 38, 51, 0.1)');
+        bgGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = bgGlow;
+        ctx.fillRect(0, 0, GAME_W, GAME_H);
+
         // Game Over title
         const glitch = Math.sin(Date.now() * 0.003) > 0.92;
         const gx = glitch ? (Math.random() - 0.5) * 8 : 0;
 
-        ctx.shadowColor = C.DARK_RED;
-        ctx.shadowBlur = 25;
-        ctx.font = 'bold 52px monospace';
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.shadowColor = C.DARK_RED;
+        ctx.shadowBlur = 40;
+        ctx.font = 'bold 56px monospace';
         ctx.fillStyle = C.DARK_RED;
-        ctx.fillText('GAME OVER', GAME_W / 2 + gx, 180);
+        ctx.fillText('GAME OVER', GAME_W / 2 + gx, 170);
+        ctx.shadowBlur = 20;
+        ctx.fillText('GAME OVER', GAME_W / 2 + gx, 170);
         ctx.shadowBlur = 0;
 
         // Decorative line
@@ -833,34 +973,44 @@
         ctx.stroke();
 
         // Final score
-        ctx.font = 'bold 28px monospace';
+        ctx.shadowColor = C.YELLOW;
+        ctx.shadowBlur = 10;
+        ctx.font = 'bold 30px monospace';
         ctx.fillStyle = C.YELLOW;
         ctx.fillText('SCORE: ' + score, GAME_W / 2, 270);
+        ctx.shadowBlur = 0;
 
         // Wave reached
-        ctx.font = '20px monospace';
+        ctx.font = '22px monospace';
         ctx.fillStyle = C.LIGHT_BLUE;
-        ctx.fillText('WAVE: ' + wave, GAME_W / 2, 310);
+        ctx.fillText('WAVE: ' + wave, GAME_W / 2, 315);
 
         // High score
         const isNew = score >= highScore && score > 0;
-        ctx.font = isNew ? 'bold 24px monospace' : '20px monospace';
+        ctx.font = isNew ? 'bold 26px monospace' : '22px monospace';
         ctx.fillStyle = isNew ? C.LIGHT_GREEN : C.ORANGE;
-        ctx.fillText(isNew ? '★ NEW HIGH SCORE: ' + score + ' ★' : 'HIGH SCORE: ' + highScore, GAME_W / 2, 370);
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = isNew ? 12 : 6;
+        ctx.fillText(isNew ? '★ NEW HIGH SCORE: ' + score + ' ★' : 'HIGH SCORE: ' + highScore, GAME_W / 2, 375);
+        ctx.shadowBlur = 0;
 
         // Play again
         const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
         ctx.globalAlpha = pulse;
-        ctx.font = 'bold 20px monospace';
+        ctx.font = 'bold 22px monospace';
         ctx.fillStyle = C.YELLOW;
-        ctx.fillText('>> PRESS ANY KEY OR TAP TO PLAY AGAIN <<', GAME_W / 2, 460);
+        ctx.shadowColor = C.YELLOW;
+        ctx.shadowBlur = 8;
+        ctx.fillText('>> PRESS ANY KEY OR TAP TO PLAY AGAIN <<', GAME_W / 2, 465);
+        ctx.shadowBlur = 0;
         ctx.globalAlpha = 1.0;
 
+        ctx.textBaseline = 'top';
         drawScanlines();
     }
 
     // ============================================================
-    // MAIN RENDER
+    // MAIN RENDER — HD quality
     // ============================================================
     function render() {
         if (gameState === STATE.TITLE) {
@@ -869,9 +1019,9 @@
         }
 
         if (gameState === STATE.GAME_OVER) {
-            drawParticles();
-            updateParticles();
             drawGameOverScreen();
+            updateParticles();
+            drawParticles();
             return;
         }
 
@@ -891,12 +1041,25 @@
         // Scanlines
         drawScanlines();
 
-        // Border glow
+        // Subtle vignette
+        const vignette = ctx.createRadialGradient(
+            GAME_W / 2, GAME_H / 2, GAME_W * 0.25,
+            GAME_W / 2, GAME_H / 2, GAME_W * 0.72
+        );
+        vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vignette.addColorStop(1, 'rgba(0, 0, 0, 0.35)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, GAME_W, GAME_H);
+
+        // Neon border
         ctx.strokeStyle = C.DARK_BLUE;
-        ctx.lineWidth = 3;
-        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = 2;
+        ctx.shadowColor = C.LIGHT_BLUE;
+        ctx.shadowBlur = 6;
+        ctx.globalAlpha = 0.5;
         ctx.strokeRect(1, 1, GAME_W - 2, GAME_H - 2);
         ctx.globalAlpha = 1.0;
+        ctx.shadowBlur = 0;
     }
 
     // ============================================================
