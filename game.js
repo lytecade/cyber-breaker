@@ -51,19 +51,22 @@
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         const size = Math.min(vw, vh);
-        dpr = window.devicePixelRatio || 1;
-        displayScale = size / GAME_W;
-
-        // Set canvas internal resolution to HD (display size × DPR)
+    
+        // Refactor: Cap the DPR at 2.0 to prevent performance lag on high-density screens
+        dpr = Math.min(window.devicePixelRatio || 1, 2.0); 
+        
+        displayScale = size / GAME_W;  
+    
+        // Set canvas internal resolution to HD (display size × capped DPR)
         const hdWidth = Math.round(size * dpr);
         const hdHeight = Math.round(size * dpr);
         canvas.width = hdWidth;
-        canvas.height = hdHeight;
-
+        canvas.height = hdHeight;  
+    
         // Set CSS display size
         canvas.style.width = size + 'px';
         canvas.style.height = size + 'px';
-
+    
         // Scale context so all drawing uses GAME_W × GAME_H coordinates
         ctx.setTransform(dpr * displayScale, 0, 0, dpr * displayScale, 0, 0);
     }
@@ -125,6 +128,9 @@
 
     // Title screen glitch timer
     let glitchTimer = 0;
+
+    // Global variable to cache the pattern so it isn't recreated every frame
+    let scanlinePattern = null;
 
     // ============================================================
     // POWERUP STATE
@@ -526,12 +532,39 @@
     // ============================================================
     // RENDER HELPERS — HD quality
     // ============================================================
+    function createScanlinePattern() {
+        // Create a tiny off-screen canvas to define the pattern (1px wide, 4px high)
+        const patternCanvas = document.createElement('canvas');
+        patternCanvas.width = 1;
+        patternCanvas.height = 4;
+        const pctx = patternCanvas.getContext('2d');
+        
+        // Draw a single scanline at the top of the pattern
+        pctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+        pctx.fillRect(0, 0, 1, 1);
+        
+        // Return the pattern created from this canvas
+        return ctx.createPattern(patternCanvas, 'repeat');
+    }
+    
     function drawScanlines() {
-        scanlineOffset = (scanlineOffset + 0.5) % 4;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
-        for (let y = scanlineOffset; y < GAME_H; y += 4) {
-            ctx.fillRect(0, y, GAME_W, 1);
+        // Initialize the pattern once
+        if (!scanlinePattern) {
+            scanlinePattern = createScanlinePattern();
         }
+    
+        // Update the offset for the animation effect [1]
+        scanlineOffset = (scanlineOffset + 0.5) % 4;
+    
+        ctx.save();
+        // Shift the context to simulate the moving scanlines
+        ctx.translate(0, scanlineOffset);
+        ctx.fillStyle = scanlinePattern;
+        
+        // Draw one large rectangle that covers the whole screen using the pattern
+        // We extend the height by 4 to ensure no gaps appear during the offset shift
+        ctx.fillRect(0, -scanlineOffset, GAME_W, GAME_H + 4);
+        ctx.restore();
     }
 
     function drawGrid() {
