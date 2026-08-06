@@ -37,15 +37,42 @@
     ];
 
     // ============================================================
+    // GAME CONSTANTS
+    // ============================================================
+    const GAME_W = 640;
+    const GAME_H = 640;
+    const PADDLE_W = 100;
+    const PADDLE_H = 14;
+    const PADDLE_Y = GAME_H - 50;
+    const PADDLE_SPEED = 7;
+
+    const BALL_R = 7;
+    const BALL_SPEED_INIT = 5;
+    const BALL_MAX_SPEED = 10;
+
+    const BRICK_ROWS_BASE = 5;
+    const BRICK_COLS = 8;
+    const BRICK_W = 66;
+    const BRICK_H = 22;
+    const BRICK_PAD = 6;
+    const BRICK_TOP = 60;
+
+    const TOTAL_LIVES = 5;
+    const SCORE_PER_BRICK = 10;
+    const SCORE_PER_WAVE = 100;
+
+    const POWERUP_CHANCE = 0.05;  // 5% chance per block break
+    const POWERUP_DURATION = 30;  // seconds
+
+    // ============================================================
     // CANVAS SETUP — HD rendering with device pixel ratio
     // ============================================================
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    const GAME_W = 640;
-    const GAME_H = 640;
     let displayScale = 1;    // CSS pixels / game units
     let dpr = 1;             // device pixel ratio
+    let scanlinePattern = null;
 
     // ============================================================
     // CACHED RESOURCES — pre-rendered canvases & gradient textures
@@ -332,31 +359,6 @@
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // ============================================================
-    // GAME CONSTANTS
-    // ============================================================
-    const PADDLE_W = 100;
-    const PADDLE_H = 14;
-    const PADDLE_Y = GAME_H - 50;
-    const PADDLE_SPEED = 7;
-
-    const BALL_R = 7;
-    const BALL_SPEED_INIT = 5;
-    const BALL_MAX_SPEED = 10;
-
-    const BRICK_ROWS_BASE = 5;
-    const BRICK_COLS = 8;
-    const BRICK_W = 66;
-    const BRICK_H = 22;
-    const BRICK_PAD = 6;
-    const BRICK_TOP = 60;
-
-    const TOTAL_LIVES = 5;
-    const SCORE_PER_BRICK = 10;
-    const SCORE_PER_WAVE = 100;
-
-    const POWERUP_CHANCE = 0.05;  // 5% chance per block break
-    const POWERUP_DURATION = 30;  // seconds
 
     // ============================================================
     // GAME STATE
@@ -390,8 +392,6 @@
     // Title screen glitch timer
     let glitchTimer = 0;
 
-    // Global variable to cache the pattern so it isn't recreated every frame
-    let scanlinePattern = null;
 
     // ============================================================
     // POWERUP STATE
