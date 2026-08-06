@@ -47,28 +47,286 @@
     let displayScale = 1;    // CSS pixels / game units
     let dpr = 1;             // device pixel ratio
 
+    // ============================================================
+    // CACHED RESOURCES — pre-rendered canvases & gradient textures
+    // ============================================================
+    let gridCanvas = null;
+    let vignetteCanvas = null;
+    let brickTopHLCanvas = null;
+    let brickLeftHLCanvas = null;
+    let paddleBodyCanvas = null;
+    let paddleHLCanvas = null;
+    let paddleSideLightCanvas = null;
+    let ballCanvasNormal = null;
+    let ballCanvasPowerup = null;
+    let ballHLCanvas = null;
+    let ballDotCanvas = null;
+    let ballGlowNormalCanvas = null;
+    let ballGlowPowerupCanvas = null;
+
+    function initCachedResources() {
+        // --- Off-screen grid canvas ---
+        gridCanvas = document.createElement('canvas');
+        gridCanvas.width = GAME_W;
+        gridCanvas.height = GAME_H;
+        const gctx = gridCanvas.getContext('2d');
+        gctx.strokeStyle = C.DARK_BLUE;
+        gctx.lineWidth = 0.5;
+        gctx.globalAlpha = 0.12;
+        const gridSize = 40;
+        for (let x = 0; x <= GAME_W; x += gridSize) {
+            gctx.beginPath();
+            gctx.moveTo(x, 0);
+            gctx.lineTo(x, GAME_H);
+            gctx.stroke();
+        }
+        for (let y = 0; y <= GAME_H; y += gridSize) {
+            gctx.beginPath();
+            gctx.moveTo(0, y);
+            gctx.lineTo(GAME_W, y);
+            gctx.stroke();
+        }
+
+        // --- Vignette canvas ---
+        vignetteCanvas = document.createElement('canvas');
+        vignetteCanvas.width = GAME_W;
+        vignetteCanvas.height = GAME_H;
+        const vctx = vignetteCanvas.getContext('2d');
+        const vignette = vctx.createRadialGradient(
+            GAME_W / 2, GAME_H / 2, GAME_W * 0.25,
+            GAME_W / 2, GAME_H / 2, GAME_W * 0.72
+        );
+        vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vignette.addColorStop(1, 'rgba(0, 0, 0, 0.35)');
+        vctx.fillStyle = vignette;
+        vctx.fillRect(0, 0, GAME_W, GAME_H);
+
+        // --- Brick template highlight canvases ---
+        brickTopHLCanvas = document.createElement('canvas');
+        brickTopHLCanvas.width = BRICK_W;
+        brickTopHLCanvas.height = Math.ceil(BRICK_H * 0.5);
+        const bctx1 = brickTopHLCanvas.getContext('2d');
+        const topHL = bctx1.createLinearGradient(0, 0, 0, BRICK_H * 0.5);
+        topHL.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+        topHL.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        bctx1.fillStyle = topHL;
+        // Use rounded rect for the top half
+        const r1 = Math.min(3, BRICK_W / 2, (BRICK_H * 0.5) / 2);
+        bctx1.beginPath();
+        bctx1.moveTo(r1, 0);
+        bctx1.lineTo(BRICK_W - r1, 0);
+        bctx1.quadraticCurveTo(BRICK_W, 0, BRICK_W, r1);
+        bctx1.lineTo(BRICK_W, BRICK_H * 0.5);
+        bctx1.lineTo(0, BRICK_H * 0.5);
+        bctx1.lineTo(0, r1);
+        bctx1.quadraticCurveTo(0, 0, r1, 0);
+        bctx1.closePath();
+        bctx1.fill();
+
+        brickLeftHLCanvas = document.createElement('canvas');
+        brickLeftHLCanvas.width = Math.ceil(BRICK_W * 0.3);
+        brickLeftHLCanvas.height = BRICK_H;
+        const bctx2 = brickLeftHLCanvas.getContext('2d');
+        const leftHL = bctx2.createLinearGradient(0, 0, BRICK_W * 0.3, 0);
+        leftHL.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+        leftHL.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        bctx2.fillStyle = leftHL;
+        bctx2.fillRect(0, 0, BRICK_W * 0.3, BRICK_H);
+
+        // --- Paddle body gradient canvas ---
+        paddleBodyCanvas = document.createElement('canvas');
+        paddleBodyCanvas.width = PADDLE_W;
+        paddleBodyCanvas.height = PADDLE_H;
+        const pctx1 = paddleBodyCanvas.getContext('2d');
+        const pGrad = pctx1.createLinearGradient(0, 0, 0, PADDLE_H);
+        pGrad.addColorStop(0, C.LIGHT_CYAN);
+        pGrad.addColorStop(0.4, C.LIGHT_BLUE);
+        pGrad.addColorStop(1, C.BLUE);
+        const cornerR = PADDLE_H / 2;
+        pctx1.fillStyle = pGrad;
+        pctx1.beginPath();
+        pctx1.moveTo(cornerR, 0);
+        pctx1.lineTo(PADDLE_W - cornerR, 0);
+        pctx1.quadraticCurveTo(PADDLE_W, 0, PADDLE_W, cornerR);
+        pctx1.lineTo(PADDLE_W, PADDLE_H - cornerR);
+        pctx1.quadraticCurveTo(PADDLE_W, PADDLE_H, PADDLE_W - cornerR, PADDLE_H);
+        pctx1.lineTo(cornerR, PADDLE_H);
+        pctx1.quadraticCurveTo(0, PADDLE_H, 0, PADDLE_H - cornerR);
+        pctx1.lineTo(0, cornerR);
+        pctx1.quadraticCurveTo(0, 0, cornerR, 0);
+        pctx1.closePath();
+        pctx1.fill();
+
+        // --- Paddle highlight canvas ---
+        paddleHLCanvas = document.createElement('canvas');
+        paddleHLCanvas.width = PADDLE_W;
+        paddleHLCanvas.height = PADDLE_H;
+        const pctx2 = paddleHLCanvas.getContext('2d');
+        const hlGrad = pctx2.createLinearGradient(0, 0, 0, PADDLE_H * 0.6);
+        hlGrad.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
+        hlGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        const cornerR2 = Math.min(cornerR - 1, (PADDLE_W - 8) / 2, (PADDLE_H * 0.5) / 2);
+        pctx2.fillStyle = hlGrad;
+        pctx2.beginPath();
+        pctx2.moveTo(4 + cornerR2, 1);
+        pctx2.lineTo(4 + PADDLE_W - 8 - cornerR2, 1);
+        pctx2.quadraticCurveTo(4 + PADDLE_W - 8, 1, 4 + PADDLE_W - 8, 1 + cornerR2);
+        pctx2.lineTo(4 + PADDLE_W - 8, 1 + PADDLE_H * 0.5);
+        pctx2.lineTo(4, 1 + PADDLE_H * 0.5);
+        pctx2.lineTo(4, 1 + cornerR2);
+        pctx2.quadraticCurveTo(4, 1, 4 + cornerR2, 1);
+        pctx2.closePath();
+        pctx2.fill();
+
+        // --- Paddle side light canvas (single, drawn at both sides) ---
+        paddleSideLightCanvas = document.createElement('canvas');
+        paddleSideLightCanvas.width = 4;
+        paddleSideLightCanvas.height = PADDLE_H - 6;
+        const pctx3 = paddleSideLightCanvas.getContext('2d');
+        pctx3.fillStyle = C.WHITE;
+        const slR = 2;
+        pctx3.beginPath();
+        pctx3.moveTo(slR, 0);
+        pctx3.lineTo(4 - slR, 0);
+        pctx3.quadraticCurveTo(4, 0, 4, slR);
+        pctx3.lineTo(4, PADDLE_H - 6 - slR);
+        pctx3.quadraticCurveTo(4, PADDLE_H - 6, 4 - slR, PADDLE_H - 6);
+        pctx3.lineTo(slR, PADDLE_H - 6);
+        pctx3.quadraticCurveTo(0, PADDLE_H - 6, 0, PADDLE_H - 6 - slR);
+        pctx3.lineTo(0, slR);
+        pctx3.quadraticCurveTo(0, 0, slR, 0);
+        pctx3.closePath();
+        pctx3.fill();
+
+        // --- Ball normal canvas (gradient core) ---
+        const ballSize = BALL_R * 2 + 2;
+        ballCanvasNormal = document.createElement('canvas');
+        ballCanvasNormal.width = ballSize;
+        ballCanvasNormal.height = ballSize;
+        const nctx = ballCanvasNormal.getContext('2d');
+        const nGrad = nctx.createRadialGradient(
+            BALL_R * 0.7, BALL_R * 0.7, BALL_R * 0.1,
+            BALL_R + 1, BALL_R + 1, BALL_R
+        );
+        nGrad.addColorStop(0, C.WHITE);
+        nGrad.addColorStop(1, C.LIGHT_BLUE);
+        nctx.fillStyle = nGrad;
+        nctx.beginPath();
+        nctx.arc(BALL_R + 1, BALL_R + 1, BALL_R, 0, Math.PI * 2);
+        nctx.fill();
+
+        // --- Ball powerup canvas (gradient core) ---
+        ballCanvasPowerup = document.createElement('canvas');
+        ballCanvasPowerup.width = ballSize;
+        ballCanvasPowerup.height = ballSize;
+        const pwctx = ballCanvasPowerup.getContext('2d');
+        const pwGrad = pwctx.createRadialGradient(
+            BALL_R * 0.7, BALL_R * 0.7, BALL_R * 0.1,
+            BALL_R + 1, BALL_R + 1, BALL_R
+        );
+        pwGrad.addColorStop(0, '#39FF14');
+        pwGrad.addColorStop(1, '#1a8a0a');
+        pwctx.fillStyle = pwGrad;
+        pwctx.beginPath();
+        pwctx.arc(BALL_R + 1, BALL_R + 1, BALL_R, 0, Math.PI * 2);
+        pwctx.fill();
+
+        // --- Ball specular highlight canvas ---
+        ballHLCanvas = document.createElement('canvas');
+        ballHLCanvas.width = ballSize;
+        ballHLCanvas.height = ballSize;
+        const hlctx = ballHLCanvas.getContext('2d');
+        const hlG = hlctx.createRadialGradient(
+            BALL_R * 0.7, BALL_R * 0.7, 0,
+            BALL_R * 0.7, BALL_R * 0.7, BALL_R * 0.55
+        );
+        hlG.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+        hlG.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        hlctx.fillStyle = hlG;
+        hlctx.beginPath();
+        hlctx.arc(BALL_R + 1, BALL_R + 1, BALL_R, 0, Math.PI * 2);
+        hlctx.fill();
+
+        // --- Ball bright dot canvas ---
+        ballDotCanvas = document.createElement('canvas');
+        ballDotCanvas.width = ballSize;
+        ballDotCanvas.height = ballSize;
+        const dotctx = ballDotCanvas.getContext('2d');
+        dotctx.fillStyle = C.WHITE;
+        dotctx.globalAlpha = 0.8;
+        dotctx.beginPath();
+        dotctx.arc(BALL_R + 1 - BALL_R * 0.25, BALL_R + 1 - BALL_R * 0.25, BALL_R * 0.2, 0, Math.PI * 2);
+        dotctx.fill();
+
+        // --- Ball glow sprite (normal) ---
+        ballGlowNormalCanvas = document.createElement('canvas');
+        ballGlowNormalCanvas.width = ballSize + 8;
+        ballGlowNormalCanvas.height = ballSize + 8;
+        const gnctx = ballGlowNormalCanvas.getContext('2d');
+        const gnR = BALL_R + 4;
+        const gnCx = BALL_R + 5, gnCy = BALL_R + 5;
+        for (let i = 3; i >= 1; i--) {
+            gnctx.globalAlpha = 0.12 / i;
+            gnctx.fillStyle = C.LIGHT_CYAN;
+            gnctx.beginPath();
+            gnctx.arc(gnCx, gnCy, gnR + i * 2, 0, Math.PI * 2);
+            gnctx.fill();
+        }
+        gnctx.globalAlpha = 0.15;
+        gnctx.fillStyle = C.LIGHT_CYAN;
+        gnctx.beginPath();
+        gnctx.arc(gnCx, gnCy, gnR, 0, Math.PI * 2);
+        gnctx.fill();
+
+        // --- Ball glow sprite (powerup) ---
+        ballGlowPowerupCanvas = document.createElement('canvas');
+        ballGlowPowerupCanvas.width = ballSize + 8;
+        ballGlowPowerupCanvas.height = ballSize + 8;
+        const gpctx = ballGlowPowerupCanvas.getContext('2d');
+        const gpR = BALL_R + 4;
+        const gpCx = BALL_R + 5, gpCy = BALL_R + 5;
+        for (let i = 4; i >= 1; i--) {
+            gpctx.globalAlpha = 0.12 / i;
+            gpctx.fillStyle = '#39FF14';
+            gpctx.beginPath();
+            gpctx.arc(gpCx, gpCy, gpR + i * 2, 0, Math.PI * 2);
+            gpctx.fill();
+        }
+        gpctx.globalAlpha = 0.2;
+        gpctx.fillStyle = '#39FF14';
+        gpctx.beginPath();
+        gpctx.arc(gpCx, gpCy, gpR, 0, Math.PI * 2);
+        gpctx.fill();
+    }
+
     function resizeCanvas() {
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         const size = Math.min(vw, vh);
-    
-        // Refactor: Cap the DPR at 2.0 to prevent performance lag on high-density screens
-        dpr = Math.min(window.devicePixelRatio || 1, 2.0); 
-        
-        displayScale = size / GAME_W;  
-    
+
+        // Cap the DPR at 2.0 to prevent performance lag on high-density screens
+        dpr = Math.min(window.devicePixelRatio || 1, 2.0);
+
+        displayScale = size / GAME_W;
+
         // Set canvas internal resolution to HD (display size × capped DPR)
         const hdWidth = Math.round(size * dpr);
         const hdHeight = Math.round(size * dpr);
         canvas.width = hdWidth;
-        canvas.height = hdHeight;  
-    
+        canvas.height = hdHeight;
+
         // Set CSS display size
         canvas.style.width = size + 'px';
         canvas.style.height = size + 'px';
-    
+
         // Scale context so all drawing uses GAME_W × GAME_H coordinates
         ctx.setTransform(dpr * displayScale, 0, 0, dpr * displayScale, 0, 0);
+
+        // Re-init cached resources on resize (coordinates depend on transform)
+        initCachedResources();
+
+        // Re-init scanline pattern after context reset
+        scanlinePattern = null;
     }
 
     resizeCanvas();
@@ -120,6 +378,9 @@
     // Bricks
     let bricks = [];
 
+    // Optimized alive counter — no more O(N) filter every frame
+    let bricksAlive = 0;
+
     // Particles (for cyberpunk explosion effects)
     let particles = [];
 
@@ -152,6 +413,8 @@
         const totalW = cols * (BRICK_W + BRICK_PAD) - BRICK_PAD;
         const startX = (GAME_W - totalW) / 2;
 
+        let aliveCount = 0;
+
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 // Some random gaps for variety in later waves
@@ -168,8 +431,10 @@
                     color: BRICK_COLORS[(r + Math.floor(waveNum / 3)) % BRICK_COLORS.length],
                     alive: true,
                 });
+                aliveCount++;
             }
         }
+        bricksAlive = aliveCount;
         return b;
     }
 
@@ -368,10 +633,9 @@
             ball.x = paddle.x + PADDLE_W / 2;
             ball.y = PADDLE_Y - BALL_R - 1;
         } else {
-            // Dynamic speed: increases as blocks are destroyed, resets each wave
+            // Optimized speed boost using cached bricksAlive counter
             const totalBricks = bricks.length;
-            const aliveBricks = bricks.filter(function (b) { return b.alive; }).length;
-            const destroyedRatio = 1 - (aliveBricks / totalBricks);
+            const destroyedRatio = 1 - (bricksAlive / totalBricks);
             const speedBoost = 1 + destroyedRatio * 0.3; // up to 30% extra from brick destruction
             const newSpeed = Math.min(ball.baseSpeed * speedBoost, BALL_MAX_SPEED);
 
@@ -435,7 +699,6 @@
                 ball.y = PADDLE_Y - BALL_R - 1;
                 // Calculate angle based on where ball hits paddle
                 const hit = (ball.x - paddle.x) / PADDLE_W; // 0..1
-                const angle = hit * (-Math.PI) + Math.PI; // 0..PI mapped
                 const launchAngle = -Math.PI / 2 + (hit - 0.5) * Math.PI * 0.75;
                 ball.vx = Math.cos(launchAngle) * newSpeed;
                 ball.vy = Math.sin(launchAngle) * newSpeed;
@@ -471,6 +734,7 @@
                     b.hp--;
                     if (b.hp <= 0) {
                         b.alive = false;
+                        bricksAlive--; // O(1) decrement instead of O(N) filter
                         const points = powerupActive ? SCORE_PER_BRICK * 2 : SCORE_PER_BRICK;
                         score += points;
                         spawnParticles(b.x + b.w / 2, b.y + b.h / 2, b.color, 12);
@@ -488,7 +752,7 @@
         }
 
         // --- Check wave complete ---
-        if (bricks.every(b => !b.alive)) {
+        if (bricksAlive <= 0) {
             score += SCORE_PER_WAVE;
             wave++;
             bricks = generateBricks(wave);
@@ -530,7 +794,7 @@
     }
 
     // ============================================================
-    // RENDER HELPERS — HD quality
+    // RENDER HELPERS — HD quality, no shadowBlur
     // ============================================================
     function createScanlinePattern() {
         // Create a tiny off-screen canvas to define the pattern (1px wide, 4px high)
@@ -538,54 +802,40 @@
         patternCanvas.width = 1;
         patternCanvas.height = 4;
         const pctx = patternCanvas.getContext('2d');
-        
+
         // Draw a single scanline at the top of the pattern
         pctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
         pctx.fillRect(0, 0, 1, 1);
-        
+
         // Return the pattern created from this canvas
         return ctx.createPattern(patternCanvas, 'repeat');
     }
-    
+
     function drawScanlines() {
         // Initialize the pattern once
         if (!scanlinePattern) {
             scanlinePattern = createScanlinePattern();
         }
-    
+
         // Update the offset for the animation effect [1]
         scanlineOffset = (scanlineOffset + 0.5) % 4;
-    
+
         ctx.save();
         // Shift the context to simulate the moving scanlines
         ctx.translate(0, scanlineOffset);
         ctx.fillStyle = scanlinePattern;
-        
+
         // Draw one large rectangle that covers the whole screen using the pattern
         // We extend the height by 4 to ensure no gaps appear during the offset shift
         ctx.fillRect(0, -scanlineOffset, GAME_W, GAME_H + 4);
         ctx.restore();
     }
 
+    // Grid is now drawn once to off-screen canvas; this draws it as a single image
     function drawGrid() {
-        ctx.strokeStyle = C.DARK_BLUE;
-        ctx.lineWidth = 0.5;
-        const gridSize = 40;
-        for (let x = 0; x <= GAME_W; x += gridSize) {
-            ctx.globalAlpha = 0.12;
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, GAME_H);
-            ctx.stroke();
+        if (gridCanvas) {
+            ctx.drawImage(gridCanvas, 0, 0);
         }
-        for (let y = 0; y <= GAME_H; y += gridSize) {
-            ctx.globalAlpha = 0.12;
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(GAME_W, y);
-            ctx.stroke();
-        }
-        ctx.globalAlpha = 1.0;
     }
 
     // Draw rounded rectangle path
@@ -604,67 +854,70 @@
         ctx.closePath();
     }
 
-    function drawGlowRect(x, y, w, h, color, glowColor, glowBlur) {
-        ctx.shadowColor = glowColor;
-        ctx.shadowBlur = glowBlur;
+    // Performant glow text — multi-pass offset instead of shadowBlur
+    function drawGlowText(text, x, y, color, glowColor, passes) {
+        // Outer glow passes with decreasing alpha
+        for (let i = passes; i >= 1; i--) {
+            ctx.globalAlpha = 0.1 / i;
+            ctx.fillStyle = glowColor;
+            ctx.fillText(text, x - i, y - i);
+            ctx.fillText(text, x + i, y - i);
+            ctx.fillText(text, x - i, y + i);
+            ctx.fillText(text, x + i, y + i);
+        }
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = color;
+        ctx.fillText(text, x, y);
+    }
+
+    // Performant glow circle — multi-pass expanding radius instead of shadowBlur
+    function drawGlowCircle(x, y, r, color, glowColor, passes) {
+        for (let i = passes; i >= 1; i--) {
+            ctx.globalAlpha = 0.12 / i;
+            ctx.fillStyle = glowColor;
+            ctx.beginPath();
+            ctx.arc(x, y, r + i * 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Performant glow rect — multi-pass expanding rect instead of shadowBlur
+    function drawGlowRect(x, y, w, h, color, glowColor, passes) {
+        for (let i = passes; i >= 1; i--) {
+            ctx.globalAlpha = 0.12 / i;
+            ctx.fillStyle = glowColor;
+            ctx.fillRect(x - i, y - i, w + i * 2, h + i * 2);
+        }
+        ctx.globalAlpha = 1.0;
         ctx.fillStyle = color;
         ctx.fillRect(x, y, w, h);
-        ctx.shadowBlur = 0;
-    }
-
-    function drawGlowCircle(x, y, r, color, glowColor, glowBlur) {
-        ctx.shadowColor = glowColor;
-        ctx.shadowBlur = glowBlur;
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-    }
-
-    // Smooth gradient fill for circles
-    function drawGradientCircle(x, y, r, colorTop, colorBottom) {
-        const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
-        grad.addColorStop(0, colorTop);
-        grad.addColorStop(1, colorBottom);
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fill();
     }
 
     // ============================================================
-    // DRAW FUNCTIONS — HD quality
+    // DRAW FUNCTIONS — HD quality, cached resources
     // ============================================================
     function drawHUD() {
         ctx.textBaseline = 'top';
         ctx.font = 'bold 20px monospace';
         ctx.textAlign = 'left';
 
-        // Score
-        ctx.shadowColor = C.YELLOW;
-        ctx.shadowBlur = 8;
-        ctx.fillStyle = C.YELLOW;
-        ctx.fillText('SCORE: ' + score, 16, 14);
-        ctx.shadowBlur = 0;
+        // Score — glow text instead of shadowBlur
+        drawGlowText('SCORE: ' + score, 16, 14, C.YELLOW, C.YELLOW, 3);
 
-        // Wave
+        // Wave — center aligned
         ctx.textAlign = 'center';
-        ctx.shadowColor = C.LIGHT_BLUE;
-        ctx.shadowBlur = 8;
-        ctx.fillStyle = C.LIGHT_BLUE;
-        ctx.fillText('WAVE ' + wave, GAME_W / 2, 14);
-        ctx.shadowBlur = 0;
+        drawGlowText('WAVE ' + wave, GAME_W / 2, 14, C.LIGHT_BLUE, C.LIGHT_BLUE, 3);
 
-        // Lives
+        // Lives — right aligned
         ctx.textAlign = 'right';
-        ctx.shadowColor = C.DARK_RED;
-        ctx.shadowBlur = 6;
-        ctx.fillStyle = C.DARK_RED;
         let livesStr = '';
         for (let i = 0; i < lives; i++) livesStr += '♦ ';
-        ctx.fillText(livesStr, GAME_W - 16, 14);
-        ctx.shadowBlur = 0;
+        drawGlowText(livesStr, GAME_W - 16, 14, C.DARK_RED, C.DARK_RED, 2);
 
         // High score
         ctx.textAlign = 'right';
@@ -678,12 +931,8 @@
             ctx.font = 'bold 14px monospace';
             const pulse = 0.7 + Math.sin(Date.now() * 0.01) * 0.3;
             ctx.globalAlpha = pulse;
-            ctx.fillStyle = '#39FF14';
-            ctx.shadowColor = '#39FF14';
-            ctx.shadowBlur = 10;
             const remaining = Math.ceil(powerupTimer);
-            ctx.fillText('[ POWERUP ACTIVE: ' + remaining + 's ]', GAME_W / 2, 36);
-            ctx.shadowBlur = 0;
+            drawGlowText('[ POWERUP ACTIVE: ' + remaining + 's ]', GAME_W / 2, 36, '#39FF14', '#39FF14', 3);
             ctx.globalAlpha = 1.0;
         }
 
@@ -694,11 +943,7 @@
             ctx.font = 'bold 18px monospace';
             const msgAlpha = Math.min(1, powerupMessageTimer / 30);
             ctx.globalAlpha = msgAlpha;
-            ctx.fillStyle = '#39FF14';
-            ctx.shadowColor = '#39FF14';
-            ctx.shadowBlur = 14;
-            ctx.fillText(powerupMessage, GAME_W / 2, GAME_H / 2 - 40);
-            ctx.shadowBlur = 0;
+            drawGlowText(powerupMessage, GAME_W / 2, GAME_H / 2 - 40, '#39FF14', '#39FF14', 4);
             ctx.globalAlpha = 1.0;
             ctx.textBaseline = 'top';
         }
@@ -707,106 +952,96 @@
     function drawPaddle() {
         const px = paddle.x;
         const py = PADDLE_Y;
-        const cornerR = PADDLE_H / 2;
 
-        // Outer glow layer
-        ctx.shadowColor = C.LIGHT_CYAN;
-        ctx.shadowBlur = 20;
-        ctx.fillStyle = 'rgba(178, 220, 230, 0.15)';
+        // Outer glow layer — multi-pass instead of shadowBlur
+        const cornerR = PADDLE_H / 2;
+        for (let i = 3; i >= 1; i--) {
+            ctx.globalAlpha = 0.06 / i;
+            ctx.fillStyle = C.LIGHT_CYAN;
+            roundRectPath(px - 2 - i, py - 2 - i, PADDLE_W + 4 + i * 2, PADDLE_H + 4 + i * 2, cornerR + i);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = C.LIGHT_CYAN;
         roundRectPath(px - 2, py - 2, PADDLE_W + 4, PADDLE_H + 4, cornerR);
         ctx.fill();
-        ctx.shadowBlur = 0;
 
-        // Main paddle body with gradient
-        const grad = ctx.createLinearGradient(px, py, px, py + PADDLE_H);
-        grad.addColorStop(0, C.LIGHT_CYAN);
-        grad.addColorStop(0.4, C.LIGHT_BLUE);
-        grad.addColorStop(1, C.BLUE);
-        ctx.fillStyle = grad;
-        roundRectPath(px, py, PADDLE_W, PADDLE_H, cornerR);
-        ctx.fill();
+        // Main paddle body — cached gradient canvas
+        ctx.globalAlpha = 1.0;
+        ctx.drawImage(paddleBodyCanvas, px, py);
 
-        // Inner top highlight
-        const hlGrad = ctx.createLinearGradient(px, py, px, py + PADDLE_H * 0.6);
-        hlGrad.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
-        hlGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = hlGrad;
-        roundRectPath(px + 4, py + 1, PADDLE_W - 8, PADDLE_H * 0.5, cornerR - 1);
-        ctx.fill();
+        // Inner top highlight — cached
+        ctx.drawImage(paddleHLCanvas, px, py);
 
-        // Neon edge outline
+        // Neon edge outline — multi-pass instead of shadowBlur
         ctx.strokeStyle = C.LIGHT_CYAN;
         ctx.lineWidth = 1.5;
-        ctx.shadowColor = C.LIGHT_CYAN;
-        ctx.shadowBlur = 8;
+        for (let i = 2; i >= 1; i--) {
+            ctx.globalAlpha = 0.1 / i;
+            ctx.lineWidth = 1.5 + i;
+            roundRectPath(px, py, PADDLE_W, PADDLE_H, cornerR);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1.0;
+        ctx.lineWidth = 1.5;
         roundRectPath(px, py, PADDLE_W, PADDLE_H, cornerR);
         ctx.stroke();
-        ctx.shadowBlur = 0;
 
-        // Side accent lights
-        ctx.fillStyle = C.WHITE;
+        // Side accent lights — cached sprite
         ctx.globalAlpha = 0.8;
-        roundRectPath(px + 2, py + 3, 4, PADDLE_H - 6, 2);
-        ctx.fill();
-        roundRectPath(px + PADDLE_W - 6, py + 3, 4, PADDLE_H - 6, 2);
-        ctx.fill();
+        ctx.drawImage(paddleSideLightCanvas, px + 2, py + 3);
+        ctx.drawImage(paddleSideLightCanvas, px + PADDLE_W - 6, py + 3);
         ctx.globalAlpha = 1.0;
     }
 
     function drawBall() {
         const isPowerup = powerupActive;
-        const primaryColor = isPowerup ? '#39FF14' : C.WHITE;
-        const glowColor = isPowerup ? '#39FF14' : C.LIGHT_CYAN;
-        const highlightColor = isPowerup ? '#B2FF59' : C.LIGHT_CYAN;
 
-        // Multi-layer outer glow
-        ctx.shadowColor = glowColor;
-        ctx.shadowBlur = isPowerup ? 30 : 20;
-        ctx.fillStyle = isPowerup ? 'rgba(57, 255, 20, 0.2)' : 'rgba(178, 220, 230, 0.15)';
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, BALL_R + 4, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Core glow
-        ctx.shadowBlur = isPowerup ? 20 : 12;
-        drawGradientCircle(ball.x, ball.y, BALL_R, primaryColor, isPowerup ? '#1a8a0a' : C.LIGHT_BLUE);
-        ctx.shadowBlur = 0;
-
-        // Specular highlight (smooth reflection)
-        const hlGrad = ctx.createRadialGradient(
-            ball.x - BALL_R * 0.3, ball.y - BALL_R * 0.3, 0,
-            ball.x - BALL_R * 0.3, ball.y - BALL_R * 0.3, BALL_R * 0.55
+        // Glow sprite — pre-rendered canvas instead of shadowBlur
+        ctx.drawImage(
+            isPowerup ? ballGlowPowerupCanvas : ballGlowNormalCanvas,
+            ball.x - BALL_R - 4,
+            ball.y - BALL_R - 4
         );
-        hlGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-        hlGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = hlGrad;
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
-        ctx.fill();
 
-        // Small bright dot at the highlight center
-        ctx.fillStyle = C.WHITE;
-        ctx.globalAlpha = 0.8;
-        ctx.beginPath();
-        ctx.arc(ball.x - BALL_R * 0.25, ball.y - BALL_R * 0.25, BALL_R * 0.2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1.0;
+        // Core gradient — cached canvas
+        ctx.drawImage(
+            isPowerup ? ballCanvasPowerup : ballCanvasNormal,
+            ball.x - BALL_R - 1,
+            ball.y - BALL_R - 1
+        );
+
+        // Specular highlight — cached
+        ctx.drawImage(ballHLCanvas, ball.x - BALL_R - 1, ball.y - BALL_R - 1);
+
+        // Bright dot — cached
+        ctx.drawImage(ballDotCanvas, ball.x - BALL_R - 1, ball.y - BALL_R - 1);
     }
 
     function drawBricks() {
         const brickCornerR = 3;
+        const hlW = BRICK_W;
+        const hlH = Math.ceil(BRICK_H * 0.5);
+        const leftHLW = Math.ceil(BRICK_W * 0.3);
+
         for (const b of bricks) {
             if (!b.alive) continue;
 
             const hpRatio = b.hp / b.maxHp;
 
-            // Soft outer glow
-            ctx.shadowColor = b.color;
-            ctx.shadowBlur = 8;
+            // Soft outer glow — multi-pass instead of shadowBlur
+            for (let i = 2; i >= 1; i--) {
+                ctx.globalAlpha = 0.08 / i;
+                ctx.fillStyle = b.color;
+                roundRectPath(b.x - i, b.y - i, b.w + i * 2, b.h + i * 2, brickCornerR + i);
+                ctx.fill();
+            }
+
+            // Brick body
+            ctx.globalAlpha = 1.0;
             ctx.fillStyle = b.color;
             roundRectPath(b.x, b.y, b.w, b.h, brickCornerR);
             ctx.fill();
-            ctx.shadowBlur = 0;
 
             // If damaged, overlay darker layer
             if (hpRatio < 1) {
@@ -817,20 +1052,11 @@
                 ctx.globalAlpha = 1.0;
             }
 
-            // Top gradient highlight (bevel effect)
-            const topHL = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h * 0.5);
-            topHL.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
-            topHL.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = topHL;
-            roundRectPath(b.x, b.y, b.w, b.h * 0.5, brickCornerR);
-            ctx.fill();
+            // Top gradient highlight (bevel effect) — cached canvas
+            ctx.drawImage(brickTopHLCanvas, b.x, b.y);
 
-            // Left side subtle highlight
-            const leftHL = ctx.createLinearGradient(b.x, b.y, b.x + b.w * 0.3, b.y);
-            leftHL.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
-            leftHL.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = leftHL;
-            ctx.fillRect(b.x, b.y, b.w * 0.3, b.h);
+            // Left side subtle highlight — cached canvas
+            ctx.drawImage(brickLeftHLCanvas, b.x, b.y);
 
             // Neon edge
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
@@ -855,15 +1081,21 @@
     }
 
     function drawParticles() {
+        // Glow pass — wider, dimmer circles (replaces shadowBlur)
+        for (const p of particles) {
+            ctx.globalAlpha = p.life * 0.15;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // Core pass — actual particle size
         for (const p of particles) {
             ctx.globalAlpha = p.life;
-            ctx.shadowColor = p.color;
-            ctx.shadowBlur = 4;
             ctx.fillStyle = p.color;
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
             ctx.fill();
-            ctx.shadowBlur = 0;
         }
         ctx.globalAlpha = 1.0;
     }
@@ -875,7 +1107,7 @@
         // Background
         ctx.fillStyle = C.BLACK;
         ctx.fillRect(0, 0, GAME_W, GAME_H);
-        drawGrid();
+        drawGrid(); // cached single image
 
         // Ambient background glow
         const bgGlow = ctx.createRadialGradient(GAME_W / 2, 230, 30, GAME_W / 2, 230, 250);
@@ -893,23 +1125,27 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // Title "CYBER" with layered glow
-        ctx.shadowColor = C.LIGHT_BLUE;
-        ctx.shadowBlur = 40;
+        // Title "CYBER" with layered glow (no shadowBlur)
         ctx.font = 'bold 60px monospace';
+        for (let i = 4; i >= 1; i--) {
+            ctx.globalAlpha = 0.06 / i;
+            ctx.fillStyle = C.LIGHT_BLUE;
+            ctx.fillText('CYBER', GAME_W / 2 + glitchOffsetX + (Math.random() - 0.5) * i * 2, 200 + glitchOffsetY + (Math.random() - 0.5) * i);
+        }
+        ctx.globalAlpha = 1.0;
         ctx.fillStyle = C.LIGHT_CYAN;
         ctx.fillText('CYBER', GAME_W / 2 + glitchOffsetX, 200 + glitchOffsetY);
-        ctx.shadowBlur = 20;
-        ctx.fillText('CYBER', GAME_W / 2 + glitchOffsetX, 200 + glitchOffsetY);
 
-        // Title "BREAKER"
-        ctx.shadowColor = C.LIGHT_BLUE;
-        ctx.shadowBlur = 35;
+        // Title "BREAKER" with layered glow
+        ctx.font = 'bold 60px monospace';
+        for (let i = 3; i >= 1; i--) {
+            ctx.globalAlpha = 0.06 / i;
+            ctx.fillStyle = C.LIGHT_BLUE;
+            ctx.fillText('BREAKER', GAME_W / 2 - glitchOffsetX + (Math.random() - 0.5) * i * 2, 265 + glitchOffsetY + (Math.random() - 0.5) * i);
+        }
+        ctx.globalAlpha = 1.0;
         ctx.fillStyle = C.LIGHT_BLUE;
         ctx.fillText('BREAKER', GAME_W / 2 - glitchOffsetX, 265 + glitchOffsetY);
-        ctx.shadowBlur = 15;
-        ctx.fillText('BREAKER', GAME_W / 2 - glitchOffsetX, 265 + glitchOffsetY);
-        ctx.shadowBlur = 0;
 
         // Decorative line
         const lineGrad = ctx.createLinearGradient(GAME_W * 0.2, 0, GAME_W * 0.8, 0);
@@ -938,11 +1174,7 @@
         const pulse = 0.6 + Math.sin(glitchTimer * 0.08) * 0.4;
         ctx.globalAlpha = pulse;
         ctx.font = 'bold 22px monospace';
-        ctx.fillStyle = C.YELLOW;
-        ctx.shadowColor = C.YELLOW;
-        ctx.shadowBlur = 10;
-        ctx.fillText('>> PRESS ANY KEY OR TAP <<', GAME_W / 2, 430);
-        ctx.shadowBlur = 0;
+        drawGlowText('>> PRESS ANY KEY OR TAP <<', GAME_W / 2, 430, C.YELLOW, C.YELLOW, 2);
         ctx.globalAlpha = 1.0;
 
         ctx.font = '15px monospace';
@@ -952,12 +1184,8 @@
 
         // High score
         if (highScore > 0) {
-            ctx.fillStyle = C.ORANGE;
-            ctx.shadowColor = C.ORANGE;
-            ctx.shadowBlur = 6;
             ctx.font = '18px monospace';
-            ctx.fillText('HIGH SCORE: ' + highScore, GAME_W / 2, 575);
-            ctx.shadowBlur = 0;
+            drawGlowText('HIGH SCORE: ' + highScore, GAME_W / 2, 575, C.ORANGE, C.ORANGE, 2);
         }
 
         ctx.textBaseline = 'top';
@@ -968,7 +1196,7 @@
         // Background
         ctx.fillStyle = C.BLACK;
         ctx.fillRect(0, 0, GAME_W, GAME_H);
-        drawGrid();
+        drawGrid(); // cached single image
 
         // Ambient red glow
         const bgGlow = ctx.createRadialGradient(GAME_W / 2, 170, 20, GAME_W / 2, 170, 200);
@@ -984,14 +1212,16 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        ctx.shadowColor = C.DARK_RED;
-        ctx.shadowBlur = 40;
+        // "GAME OVER" with layered glow (no shadowBlur)
         ctx.font = 'bold 56px monospace';
+        for (let i = 4; i >= 1; i--) {
+            ctx.globalAlpha = 0.06 / i;
+            ctx.fillStyle = C.DARK_RED;
+            ctx.fillText('GAME OVER', GAME_W / 2 + gx + (Math.random() - 0.5) * i * 2, 170 + (Math.random() - 0.5) * i);
+        }
+        ctx.globalAlpha = 1.0;
         ctx.fillStyle = C.DARK_RED;
         ctx.fillText('GAME OVER', GAME_W / 2 + gx, 170);
-        ctx.shadowBlur = 20;
-        ctx.fillText('GAME OVER', GAME_W / 2 + gx, 170);
-        ctx.shadowBlur = 0;
 
         // Decorative line
         const lineGrad = ctx.createLinearGradient(GAME_W * 0.2, 0, GAME_W * 0.8, 0);
@@ -1005,13 +1235,9 @@
         ctx.lineTo(GAME_W * 0.8, 205);
         ctx.stroke();
 
-        // Final score
-        ctx.shadowColor = C.YELLOW;
-        ctx.shadowBlur = 10;
+        // Final score — glow text
         ctx.font = 'bold 30px monospace';
-        ctx.fillStyle = C.YELLOW;
-        ctx.fillText('SCORE: ' + score, GAME_W / 2, 270);
-        ctx.shadowBlur = 0;
+        drawGlowText('SCORE: ' + score, GAME_W / 2, 270, C.YELLOW, C.YELLOW, 2);
 
         // Wave reached
         ctx.font = '22px monospace';
@@ -1021,21 +1247,19 @@
         // High score
         const isNew = score >= highScore && score > 0;
         ctx.font = isNew ? 'bold 26px monospace' : '22px monospace';
-        ctx.fillStyle = isNew ? C.LIGHT_GREEN : C.ORANGE;
-        ctx.shadowColor = ctx.fillStyle;
-        ctx.shadowBlur = isNew ? 12 : 6;
-        ctx.fillText(isNew ? '★ NEW HIGH SCORE: ' + score + ' ★' : 'HIGH SCORE: ' + highScore, GAME_W / 2, 375);
-        ctx.shadowBlur = 0;
+        drawGlowText(
+            isNew ? '★ NEW HIGH SCORE: ' + score + ' ★' : 'HIGH SCORE: ' + highScore,
+            GAME_W / 2, 375,
+            isNew ? C.LIGHT_GREEN : C.ORANGE,
+            isNew ? C.LIGHT_GREEN : C.ORANGE,
+            isNew ? 3 : 2
+        );
 
         // Play again
         const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
         ctx.globalAlpha = pulse;
         ctx.font = 'bold 22px monospace';
-        ctx.fillStyle = C.YELLOW;
-        ctx.shadowColor = C.YELLOW;
-        ctx.shadowBlur = 8;
-        ctx.fillText('>> PRESS ANY KEY OR TAP TO PLAY AGAIN <<', GAME_W / 2, 465);
-        ctx.shadowBlur = 0;
+        drawGlowText('>> PRESS ANY KEY OR TAP TO PLAY AGAIN <<', GAME_W / 2, 465, C.YELLOW, C.YELLOW, 2);
         ctx.globalAlpha = 1.0;
 
         ctx.textBaseline = 'top';
@@ -1043,7 +1267,7 @@
     }
 
     // ============================================================
-    // MAIN RENDER — HD quality
+    // MAIN RENDER — HD quality, cached resources
     // ============================================================
     function render() {
         if (gameState === STATE.TITLE) {
@@ -1062,7 +1286,7 @@
         // Background
         ctx.fillStyle = C.BLACK;
         ctx.fillRect(0, 0, GAME_W, GAME_H);
-        drawGrid();
+        drawGrid(); // cached single image draw
 
         // Draw game elements
         drawBricks();
@@ -1074,25 +1298,23 @@
         // Scanlines
         drawScanlines();
 
-        // Subtle vignette
-        const vignette = ctx.createRadialGradient(
-            GAME_W / 2, GAME_H / 2, GAME_W * 0.25,
-            GAME_W / 2, GAME_H / 2, GAME_W * 0.72
-        );
-        vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        vignette.addColorStop(1, 'rgba(0, 0, 0, 0.35)');
-        ctx.fillStyle = vignette;
-        ctx.fillRect(0, 0, GAME_W, GAME_H);
+        // Subtle vignette — cached canvas draw instead of new gradient every frame
+        if (vignetteCanvas) {
+            ctx.drawImage(vignetteCanvas, 0, 0);
+        }
 
-        // Neon border
+        // Neon border — multi-pass glow instead of shadowBlur
+        for (let i = 2; i >= 1; i--) {
+            ctx.globalAlpha = 0.06 / i;
+            ctx.strokeStyle = C.LIGHT_BLUE;
+            ctx.lineWidth = 2 + i * 2;
+            ctx.strokeRect(1, 1, GAME_W - 2, GAME_H - 2);
+        }
+        ctx.globalAlpha = 0.5;
         ctx.strokeStyle = C.DARK_BLUE;
         ctx.lineWidth = 2;
-        ctx.shadowColor = C.LIGHT_BLUE;
-        ctx.shadowBlur = 6;
-        ctx.globalAlpha = 0.5;
         ctx.strokeRect(1, 1, GAME_W - 2, GAME_H - 2);
         ctx.globalAlpha = 1.0;
-        ctx.shadowBlur = 0;
     }
 
     // ============================================================
